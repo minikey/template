@@ -1,54 +1,11 @@
 import Util from './util';
+import Base from './base';
 
-export default class Template {
-    defaults: {
-        openTag: '{{',
-        endTag: '}}',
-        compress: true
-    }
+export default class Template extends Base {
 
-    const KEY_WORDS = ['foreach', '/foreach', 'if', 'elseif', '/if'];
-    const FOREACH_REG = /^foreach\b(.+)\bas\b(?:(.+?)=>)?(.+)/;
-    const IF_REG = /^(if|elseif)\b\s*(.+)\s*/;
-    const VAR_REG = /^$/;
-    const KEY_WORDS_REG = new RegExp('^\\b' + KEY_WORDS.join('\\b|\\b') + '\\b');
-    
-    const GRAMMER_MAP = {
-        'foreach': function (code) {
-            var res = code.match(FOREACH_REG),
-                arr = Util.trim(res[1]).replace(VAR_REG, ''),  // 遍历的数组名
-                key = Util.trim(res[2]).replace(VAR_REG, ''),  // key
-                item = Util.trim(res[3]).replave(VAR_REG, '');
-
-            if (!res || !arr || !item || key === '') {
-                throw new Error('foreach 表达式语法错误~');
-            } else {
-                return '$util.each($data.' + arr + ', function (' + item + ', ' + key ? key : 'i' + '){';
-            }
-        },
-        '/foreach': function () {
-            return '});';
-        },
-        'if': function (code) {
-            var res = code.match(IF_REG),
-                exp = Util.trim(res[2]);
-
-            if (!res || !exp) {
-                throw new Error('if 表达式语法错误~');
-            } else {
-
-            }
-        },
-        '/if': function () {
-            return '}';
-        },
-        'elseif': function (code) {
-            
-        }
-    };
-
-    constructor (opts) {
-        this.options = Util.merge(this.defaults, opts);
+    constructor(opts) {
+        super();
+        this.options = Util.merge(this.defaults, opts || {});
     }
 
     /**
@@ -57,22 +14,49 @@ export default class Template {
      * @return {[type]}     [description]
      */
     complie(tpl) {
-        var body = 'var html = "";',
-            sub,
-            ls,
+        var body = '"use strict";\nvar html = "";\nvar tmp;\n',
+            code,
+            keyword,
             parts;
 
-        Util.each(tpl.split(this.options.openTag), (text) => {
-            text = Util.trim(text);
-
+        Util.each(tpl.split(this.options.openTag), (text, index) => {
             parts = text.split(this.options.endTag);
-
-            sub = Util.trim(parts[0]);
-            ls  = Util.trim(parts[1]);
-
-            body += 'html += "';
-            html += this.getHtml(sub);
+            
+            if (index === 0 && text) {
+                if (text.indexOf(this.options.endTag) !== -1) {
+                    throw new Error('语法错误');
+                }
+                body += 'html += ' + this.getWrapper(text) + ';\n';
+                return;
+            }
+            
+            code = parts[0];
+            
+            if (code) {
+                code = Util.trim(code);
+                keyword = (code.match(this.KEY_WORDS_REG) || '')[0];
+                
+                if (keyword) {
+                    body += this.GRAMMER_MAP[keyword].call(this, code) + '\n';
+                } else {
+                    body += 'html += (tmp = (' + code + ')) ? tmp : \'\';\n';
+                }
+            }
+            
+            if (parts[1]) {
+                body += 'html += ' + this.getWrapper(parts[1]) + ';\n';
+            }
         });
+        body += 'return html;';
+        
+        return body;
+    }
+    
+    /**
+     * 过滤器解析
+     */
+    filterRule(code) {
+        
     }
 
     /**
@@ -84,8 +68,14 @@ export default class Template {
     render(tpl, data) {
         
     }
-
-    private express(code) {
-
+    
+    /**
+     * 替换特殊字符
+     */
+    getWrapper(code) {
+        if (this.options.compress) {
+            code = code.replace(/\s+/g, ' ').replace(/<!--[\w\W]*?-->/g, '');
+        }
+        return '\'' + code.replace(this.S_PART_1, '\\$1').replace(this.S_PART_2, '\\r').replace(this.S_PART_3, '\\n') + '\'';
     }
 }
