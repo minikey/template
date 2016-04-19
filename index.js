@@ -1,11 +1,15 @@
 import Util from './util';
 import Base from './base';
+import Cache from './cache';
+import Helper from './helper';
 
 export default class Template extends Base {
 
     constructor(opts) {
         super();
         this.options = Util.merge(this.defaults, opts || {});
+        this.cache = new Cache(20);
+        this.helper = new Helper();
     }
 
     /**
@@ -13,33 +17,34 @@ export default class Template extends Base {
      * @param  {[type]} tpl [description]
      * @return {[type]}     [description]
      */
-    complie(tpl) {
+    complie(tpl, returnBody) {
         var body = '"use strict";\nvar html = "";\nvar tmp;\n',
             code,
             keyword,
-            parts;
-
+            parts,
+            res;
+        
+        this._isInEach = false; // 重置循环体标记️
+        
         Util.each(tpl.split(this.options.openTag), (text, index) => {
-            parts = text.split(this.options.endTag);
+            parts = text.split(this.options.endTag) || [];
             
-            if (index === 0 && text) {
-                if (text.indexOf(this.options.endTag) !== -1) {
-                    throw new Error('语法错误');
-                }
-                body += 'html += ' + this.getWrapper(text) + ';\n';
-                return;
+            if (index === 0) {
+                parts.unshift('');
             }
             
             code = parts[0];
             
             if (code) {
                 code = Util.trim(code);
-                keyword = (code.match(this.KEY_WORDS_REG) || '')[0];
+                keyword = (code.match(Base.KEY_WORDS_REG) || '')[0];
                 
                 if (keyword) {
-                    body += this.GRAMMER_MAP[keyword].call(this, code) + '\n';
+                    res = this.GRAMMER_MAP[keyword].call(this, code);
+                    
+                    body += (keyword === 'foreach' ? res.code : res) + '\n';
                 } else {
-                    body += 'html += (tmp = (' + code + ')) ? tmp : \'\';\n';
+                    body += 'html += (tmp = (' + this.filterRule(code) + ')) ? tmp : "";\n';
                 }
             }
             
@@ -49,14 +54,14 @@ export default class Template extends Base {
         });
         body += 'return html;';
         
-        return body;
+        return returnBody ? body : this.makeFun(body);
     }
     
-    /**
-     * 过滤器解析
-     */
-    filterRule(code) {
-        
+    makeFun(body) {
+        let fun = new Function('__util', '__helper', '__data', body);
+        return (data) => {
+            return fun.call(this, Util, this.helper, data);
+        };
     }
 
     /**
@@ -65,8 +70,34 @@ export default class Template extends Base {
      * @param  {[type]} data [description]
      * @return {[type]}      [description]
      */
-    render(tpl, data) {
+    render(id, data) {
+        var hit = this.cache.get(id),
+            body,
+            tpl,
+            dom,
+            html = '';
         
+        if (!hit) {
+            dom = document.querySelector('#' + id);
+            tpl = dom.innerHTML;
+            
+            try {
+                body = this.complie(tpl);
+            } catch (e) {
+                console.error(e);
+                body = '';
+            }
+            hit = new Function('__util', '__helper', '__data', body);
+            this.cache.put(id, hit);
+        }
+       
+        try {
+            html = hit.call(data, Util, data);
+        } catch (e) {
+            console.error(e);
+        }
+        
+        return html;
     }
     
     /**
@@ -76,6 +107,6 @@ export default class Template extends Base {
         if (this.options.compress) {
             code = code.replace(/\s+/g, ' ').replace(/<!--[\w\W]*?-->/g, '');
         }
-        return '\'' + code.replace(this.S_PART_1, '\\$1').replace(this.S_PART_2, '\\r').replace(this.S_PART_3, '\\n') + '\'';
+        return '\'' + code.replace(Base.S_PART_1, '\\$1').replace(Base.S_PART_2, '\\r').replace(Base.S_PART_3, '\\n') + '\'';
     }
 }

@@ -36,24 +36,4 @@ export default class Util {
 
         return opts;
     }
-    
-    static escapeHTML(html) {
-        let escapeMap = {
-            "<": "&#60;",
-            ">": "&#62;",
-            '"': "&#34;",
-            "'": "&#39;",
-            "&": "&#38;"
-        };
-        
-        function replaceHandler(char) {
-            return escapeMap[char];
-        }
-        
-        return html ? (html + '').replace(/&(?![#\w]+;)|[<>'"]/g, replaceHandler) : '';
-    }
-
-    static substr(str, startIndex, len) {
-        return str ? (str + '').slice.call(str, startIndex, len) : '';
-    }
 }

@@ -1,4 +1,4 @@
-export class Cache {
+export default class Cache {
 
     constructor(limit) {
         this.limit = limit | 0; 
