@@ -72,7 +72,6 @@ export default class Template extends Base {
      */
     render(id, data) {
         var hit = this.cache.get(id),
-            body,
             tpl,
             dom,
             html = '';
@@ -82,13 +81,11 @@ export default class Template extends Base {
             tpl = dom.innerHTML;
             
             try {
-                body = this.complie(tpl);
+                hit = this.complie(tpl);
             } catch (e) {
                 console.error(e);
                 body = '';
             }
-            hit = new Function('__util', '__helper', '__data', body);
-            this.cache.put(id, hit);
         }
        
         try {
