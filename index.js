@@ -84,7 +84,6 @@ export default class Template extends Base {
                 hit = this.complie(tpl);
             } catch (e) {
                 console.error(e);
-                body = '';
             }
         }
        
