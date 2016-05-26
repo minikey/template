@@ -1,6 +1,9 @@
 {
     "presets": [
-        "es2015"
+        "es2015",
+        "babel-preset-stage-1"
     ],
-    "plugins": ["transform-class-properties"]
+    "plugins": [
+        "babel-plugin-transform-runtime"
+    ]
 }

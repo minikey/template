@@ -10,6 +10,7 @@ export default class Template extends Base {
         this.options = Util.merge(this.defaults, opts || {});
         this.cache = new Cache(20);
         this.helper = new Helper();
+        this.util = Util;
     }
 
     /**
@@ -18,41 +19,84 @@ export default class Template extends Base {
      * @return {[type]}     [description]
      */
     complie(tpl, returnBody) {
-        var body = '"use strict";\nvar html = "";\nvar tmp;\n',
+        var header = '"use strict";\nvar __html = "";\nvar __tmp;\n',
+            body = '',
             code,
+            html,
             keyword,
             parts,
-            res;
+            parser,
+            isOut = false,
+            defStr = '', // 变量定义部分
+            def = {
+                '__list__': []
+            };
         
-        this._isInEach = false; // 重置循环体标记️
-        
-        Util.each(tpl.split(this.options.openTag), (text, index) => {
+        Util.each(tpl.split(this.options.openTag), (text) => {
             parts = text.split(this.options.endTag) || [];
             
-            if (index === 0) {
-                parts.unshift('');
+            if (parts.length === 1) {
+                code = null;
+                html = parts[0];
+            } else {
+                code = parts[0];
+                html = parts[1];
             }
-            
-            code = parts[0];
             
             if (code) {
                 code = Util.trim(code);
-                keyword = (code.match(Base.KEY_WORDS_REG) || '')[0];
+                keyword = (code.match(this.GETWORDS_REG) || '')[0];
                 
-                if (keyword) {
-                    res = this.GRAMMER_MAP[keyword].call(this, code);
-                    
-                    body += (keyword === 'foreach' ? res.code : res) + '\n';
+                if (keyword && (parser = this.GRAMMER_MAP[keyword])) { // 如果存在解析器
+                    code = parser.call(this, code);
+                    isOut = false;
                 } else {
-                    body += 'html += (tmp = (' + this.filterRule(code) + ')) ? tmp : "";\n';
+                    code = this.defaultHandler(code); // 不存在解析器 现在的情况是要么是输出 要么是赋值
+                    isOut = true;    
+                }
+                
+                code = this.paramsFilter(code, def); // 处理变量（提取变量）
+                
+                if (this._eachInfo) {
+                    // 暂时不考虑字符串中有表达式的问题
+                    code = code.replace(this._eachInfo.atReg, ($0, $1) => {
+                       if ($1 === 'index') {
+                           return this._eachInfo.index;
+                       } else if ($1 === 'last') {
+                           return '(' + this._eachInfo.arr + '.length - 1 === ' + this._eachInfo.index + ')';
+                       }
+                    });
+                }
+                
+                if (isOut) {
+                    body += '__html +=' + code + ';\n';
+                } else {
+                    body += code;
                 }
             }
             
-            if (parts[1]) {
-                body += 'html += ' + this.getWrapper(parts[1]) + ';\n';
+            if (html) {
+                body += '__html += ' + this.encode(html) + ';\n';
             }
         });
-        body += 'return html;';
+        body += 'return __html;\n';
+        
+        var l = def.__list__.length - 1;
+        Util.each(def.__list__, (item, i) => {
+            if (!defStr) {
+                defStr = 'var ';
+            }
+            
+            defStr += item.key + ' = ' + item.val;
+            
+            if (i < l) {
+                defStr += ', ';
+            } else {
+                defStr += ';\n';
+            }
+        });
+        
+        body = header + defStr + body;
         
         return returnBody ? body : this.makeFun(body);
     }
@@ -94,15 +138,5 @@ export default class Template extends Base {
         }
         
         return html;
-    }
-    
-    /**
-     * 替换特殊字符
-     */
-    getWrapper(code) {
-        if (this.options.compress) {
-            code = code.replace(/\s+/g, ' ').replace(/<!--[\w\W]*?-->/g, '');
-        }
-        return '\'' + code.replace(Base.S_PART_1, '\\$1').replace(Base.S_PART_2, '\\r').replace(Base.S_PART_3, '\\n') + '\'';
     }
 }

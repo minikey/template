@@ -9,16 +9,14 @@ export default class Base {
             compress: true
         };
         
-        this._eachParam = {}, // 循环体关键参数
-        this._isInEach; // 是否处于循环体
-        
+        this._eachInfo = null; // 循环体信息
         this.init();
     }
 
     init() {
         this.GRAMMER_MAP = {
             'foreach': function (code) {
-                var res = code.match(Base.FOREACH_REG),
+                var res = code.match(this.FOREACH_REG),
                     arr = Util.trim(res[1]),  // 遍历的数组名
                     key = Util.trim(res[2]),  // key
                     item = Util.trim(res[3]),
@@ -27,75 +25,39 @@ export default class Base {
                 if (!res || !arr || !item || res[2] === '') {
                     throw new Error('foreach 表达式语法错误~');
                 } else {
-                    this._isInEach = true; // 标记进入循环体解析
-                    // 处理变量名
-                    arr = arr.replace(Base.EXP_REG, (v) => {
-                        return '__data.' + v.slice(1);
-                    });
-                    
-                    key = key && key.replace(Base.EXP_REG, (v) => {
-                        return v.slice(1);
-                    });
-                    
-                    item = item.replace(Base.EXP_REG, (v) => {
-                        return v.slice(1);
-                    });
-                    
                     keyName = key || '__i';
                     
-                    this._eachParam = {
-                        arrName: arr,
-                        keyName: keyName,
-                        itemName: item,
-                        expReg: new RegExp('(?:^|\\s+)(\\$' + item + ')|(\\$' + keyName + ')\\b', 'g'),
-                        atReg: new RegExp('\\b' + item + '\\s*@\\s*(index|last)\\b', 'g'),
-                        code: '__util.each(' + arr + ', function (' + item + ', ' + keyName + '){'
+                    this._eachInfo = {
+                        arr: arr,
+                        item: item,
+                        index: keyName,
+                        atReg: new RegExp('\\' + item + '\\s*@\\s*(index|last)', 'g')
                     };
-                    
-                    return this._eachParam;
+                    return 'each(' + arr + ', function (' + item + ', ' + keyName + '){\n';
                 }
             },
             '/foreach': function () {
-                this._isInEach = false; // 标记退出循环体
-                
-                return '});';
+                this._eachInfo = null; // 销毁循环
+                return '});\n';
             },
             'if': function (code) {
-                var res = code.match(Base.IF_REG),
+                var res = code.match(this.IF_REG),
                     exp = Util.trim(res[2]);
                     
                 if (!res || !exp) {
                     throw new Error('if 表达式语法错误~');
                 } else {
-                    exp = exp.replace(Base.IF_RL_REG, (v) => {
-                        return Base.IF_RL_MAP[v];
+                    exp = exp.replace(this.IF_RL_REG, ($0, $1) => {
+                        return this.IF_RL_MAP[$1];                        
                     });
-                    
-                    if (this._isInEach) { // 如果在循环体中，处理循环特有语法
-                        var expReg = this._eachParam.expReg,
-                            atReg = this._eachParam.atReg,
-                            tmp;
-
-                        exp = exp.replace(expReg, (v, $1, $2) => {
-                            tmp = $1 || $2;
-                            return ' ' + tmp.slice(1);
-                        }).replace(atReg, (v, $1) => {
-                            return ' ' + ($1 === 'index' ? this._eachParam.keyName : '(' + this._eachParam.keyName + ' === ' + this._eachParam.arrName + '.length - 1)') + ' ';
-                        });
-                    }
-                    
-                    exp = exp.replace(Base.EXP_REG, (v) => {
-                        return '__data.' + v.slice(1);
-                    });
-                    
-                    return 'if (' + exp + ') {';
+                    return 'if (' + exp + ') {\n';
                 }
             },
             '/if': function () {
-                return '}';
+                return '}\n';
             },
             'elseif': function (code) {
-                this['if'].call(this, code);
+                return '} else ' + this['if'].call(this, code);
             },
             'else': function () {
                 return '} else {\n';
@@ -104,64 +66,88 @@ export default class Base {
     }
     
     /**
-     * 过滤器解析
+     * 默认处理器
      */
-    filterRule(code) {
-        if (this._isInEach) { // 替换循环变量名
-            code = code.replace(this._eachParam.expReg, (v) => {
-                return v.slice(1);
-            });
+    defaultHandler(code) {
+        var needFilter = true;
+        
+        if (this.NO_FILTER_REG.test(code)) {
+            needFilter = false;
         }
         
-        code = code.replace(Base.EXP_REG, (v) => { // 给变量名加前缀
-            return '__data.' + v.slice(1);
-        });
+        code = (needFilter ? 'escapeHTML' : '') + '((' + code + ') || "")';
         
-        if (Base.FILTER_REG.test(code)) {
-            debugger;
-            var parts = code.split('|'),
-                val,
-                params,
-                rcode = parts[0];
-            
-            Util.each(parts, (v, i) => { // params[0] 就是函数名 params[1]存在就是参数部分
-                if (i > 0) {
-                    params = v.split(':');
-                    
-                    if (params) {
-                        Util.each(params, (vv, ii) => {
-                            params[ii] = Util.trim(vv);
-                        });
-                    }
-                    v = Util.trim(v);
-                    
-                    rcode += '__helper.' + params[0] + '(' + rcode + (params[1] ? ', ' + params[1] : '') + ')';
-                }
-            });
-            return rcode;
-        } else {
-            return code;
-        }
+        return code;
     }
     
-    static KEY_WORDS = ['foreach', '/foreach', 'if', 'elseif', 'else', '/if'];
-    static FOREACH_REG = /^foreach\b(.+)\bas\b(?:(.+?)=>)?(.+)/;
-    static IF_REG = /^(if|elseif)\b\s*(.+)\s*/;
-    static VAR_REG = /^\$/;
-    static QUOTE_REG = /'/g;
-    static KEY_WORDS_REG = new RegExp('^(' + Base.KEY_WORDS.join('|') + ')');
-
-    // 特殊字符替换正则系列
-    static S_PART_1 = /('|\\)/g;
-    static S_PART_2 = /\r/g;
-    static S_PART_3 = /\n/g;
-
-    static FILTER_REG = /\s*[$\w]+\s*\|\s*[$\w]+/;
-    static EXP_REG = /\$[\w\$]+/g;
+    /**
+     * 变量过滤器
+     */
+    paramsFilter(code, def) {
+        Util.each(code.replace(this.REMOVE_REG, '')
+        .replace(this.SPLIT_REG, ',')
+        .replace(this.KEY_WORDS_REG, '')
+        .match(this.EXP_REG) || [], (name) => {
+            if (!def[name]) {
+                if (name.indexOf('$') === 0) {
+                    def[name] = '__data.' + name.slice(1);
+                } else if (this.helper[name]) {
+                    def[name] = '__helper.' + name;
+                } else if (this.util[name]) {
+                    def[name] = '__util.' + name;
+                }
+                
+                if (def[name]) {
+                    def.__list__.push({
+                        'key': name,
+                        'val': def[name]
+                    });   
+                }
+            }
+        });
+        return code;
+    }
     
-    static IF_RL_REG = /\b(or|and)\b/g;
-    static IF_RL_MAP = {
+    /**
+     * 替换特殊字符
+     */
+    encode(code) {
+        if (this.options.compress) {
+            code = code.replace(/\s+/g, ' ').replace(/<!--[\w\W]*?-->/g, '');
+        }
+        return '\'' + code.replace(this.S_PART_1, '\\$1').replace(this.S_PART_2, '\\r').replace(this.S_PART_3, '\\n') + '\'';
+    }
+    
+    GETWORDS_REG = /^[\w\$\/]+/;
+    
+    KEY_WORDS = ['foreach', '/foreach', 'if', 'elseif', 'else', '/if'];
+    FOREACH_REG = /^foreach\b(.+)\bas\b(?:(.+?)=>)?(.+)/;
+    IF_REG = /^(if|elseif)\b\s*(.+)\s*/;
+    VAR_REG = /^\$/;
+    QUOTE_REG = /'/g;
+    KEY_WORDS_REG = new RegExp('(' + this.KEY_WORDS.join('|') + ')');
+    NUM_REG = /^\d+/;
+    
+    REMOVE_REG = /\/\*[\w\W]*?\*\/|\/\/[^\n]*\n|\/\/[^\n]*$|"(?:[^"\\]|\\[\w\W])*"|'(?:[^'\\]|\\[\w\W])*'|\s*\.\s*[$\w\.]+/g;
+    SPLIT_REG = /[^\w\$]+/g;
+    
+    // 特殊字符替换正则系列
+    S_PART_1 = /('|\\)/g;
+    S_PART_2 = /\r/g;
+    S_PART_3 = /\n/g;
+
+    FILTER_REG = /\s*[$\w]+\s*\|\s*[$\w]+/;
+    EXP_REG = /[\w\$]+/g; // 识别变量名
+    
+    IF_RL_REG = /\b(or|and)\b/g;
+    IF_RL_MAP = {
       'or': '||',
-      'and': '&&'  
+      'and': '&&'
     };
+    
+    // 不走默认 HTML 标记
+    NO_FILTER_REG = /\bno_filter\s*$/;
+    
+    // 变量输出表达式
+    EXP_OUT_REG = /\s*\$[\$\w]+\s*(|\s*[\w\$]+)/;
 }
