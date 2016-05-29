@@ -14,11 +14,11 @@ export default class Template extends Base {
     }
 
     /**
-     * [complie 编译模版]
+     * [compile 编译模版]
      * @param  {[type]} tpl [description]
      * @return {[type]}     [description]
      */
-    complie(tpl, returnBody) {
+    compile(tpl, returnBody) {
         var header = '"use strict";\nvar __html = "";\nvar __tmp;\n',
             body = '',
             code,
@@ -104,7 +104,7 @@ export default class Template extends Base {
     makeFun(body) {
         let fun = new Function('__util', '__helper', '__data', body);
         return (data) => {
-            return fun.call(this, Util, this.helper, data);
+            return fun(this.util, this.helper, data);
         };
     }
 
@@ -125,14 +125,14 @@ export default class Template extends Base {
             tpl = dom.innerHTML;
             
             try {
-                hit = this.complie(tpl);
+                hit = this.compile(tpl);
             } catch (e) {
                 console.error(e);
             }
         }
        
         try {
-            html = hit.call(data, Util, data);
+            html = hit.call(this, data);
         } catch (e) {
             console.error(e);
         }

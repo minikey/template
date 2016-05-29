@@ -73,6 +73,7 @@ export default class Base {
         
         if (this.NO_FILTER_REG.test(code)) {
             needFilter = false;
+            code = code.replace(this.NO_FILTER_REG, ''); // fix bug
         }
         
         code = (needFilter ? 'escapeHTML' : '') + '((' + code + ') || "")';
@@ -146,7 +147,7 @@ export default class Base {
     };
     
     // 不走默认 HTML 标记
-    NO_FILTER_REG = /\bno_filter\s*$/;
+    NO_FILTER_REG = /\bnofilter\s*$/;
     
     // 变量输出表达式
     EXP_OUT_REG = /\s*\$[\$\w]+\s*(|\s*[\w\$]+)/;
